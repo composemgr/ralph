@@ -1,0 +1,54 @@
+# nginx proxy address - http://172.17.0.1:8073
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "1"
+
+services:
+  ralph:
+    image: allegro/ralph:latest
+    container_name: ralph-app
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - ralph
+    ports:
+      - "8073:8000"
+    environment:
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - ./rootfs/data/ralph:/data
+      - ./rootfs/config/ralph:/config
+    depends_on:
+      - ralph-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ralph-db:
+    image: postgres:16-alpine
+    container_name: ralph-db
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - ralph
+    environment:
+      TZ: ${TZ:-America/New_York}
+      POSTGRES_DB: ${DB_CREATE_DATABASE_NAME:-ralph}
+      POSTGRES_USER: ${DB_USER_NAME:-ralph}
+      POSTGRES_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
+    volumes:
+      - ./rootfs/db/postgres/ralph:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  ralph:
+    external: false
