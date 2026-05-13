@@ -27,7 +27,7 @@ services:
       DATABASE_USER: ${DB_USER_NAME:-ralph}
       DATABASE_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
       DATABASE_HOST: ralph-db
-      DATABASE_PORT: 5432
+      DATABASE_PORT: 3306
       REDIS_HOST: ralph-redis
       REDIS_PORT: 6379
       SECRET_KEY: ${APP_SECRET_KEY:-changeme_secret_key_min_32_chars}
@@ -70,23 +70,25 @@ services:
       - 'traefik.http.services.ralph-app.loadbalancer.server.port=8000'
 
   ralph-db:
-    image: postgres:latest
+    image: mysql:8.0
     pull_policy: always
     container_name: ralph-db
     restart: always
     logging: *default-logging
     networks:
       - ralph
+    command: ['mysqld', '--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
     environment:
       TZ: ${TZ:-America/New_York}
-      POSTGRES_DB: ${DB_CREATE_DATABASE_NAME:-ralph}
-      POSTGRES_USER: ${DB_USER_NAME:-ralph}
-      POSTGRES_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
+      MYSQL_DATABASE: ${DB_CREATE_DATABASE_NAME:-ralph}
+      MYSQL_USER: ${DB_USER_NAME:-ralph}
+      MYSQL_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ADMIN_PASS:-changeme_admin_password}
       CONTAINER_NAME: ralph-db
     volumes:
-      - ./volumes/data/db/postgres/ralph:/var/lib/postgresql/data
+      - ./volumes/data/db/mysql/ralph:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER_NAME:-ralph} -d ${DB_CREATE_DATABASE_NAME:-ralph}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ADMIN_PASS:-changeme_admin_password}"]
       interval: 30s
       timeout: 10s
       retries: 3
