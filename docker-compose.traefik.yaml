@@ -1,0 +1,108 @@
+name: ralph
+x-logging: &default-logging
+  options:
+    max-size: '5m'
+    max-file: '1'
+  driver: json-file
+
+services:
+
+  app:
+    image: allegro/ralph:latest
+    container_name: ralph-app
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: ${BASE_HOST_NAME:-$HOSTNAME}
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: ralph-app
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
+      # Web interface
+      RALPH_APP_BASE_URL: https://${BASE_HOST_NAME:-$HOSTNAME}
+      # Database
+      RALPH_DATABASE: ${DB_TYPE:-mysql}
+      RALPH_DATABASE_HOST: ralph-db
+      RALPH_DATABASE_PORT: 3306
+      RALPH_DATABASE_NAME: ${DB_CREATE_DATABASE_NAME:-ralph}
+      RALPH_DATABASE_USER: ${DB_USER_NAME:-ralph}
+      RALPH_DATABASE_PASSWORD: ${DB_USER_PASS:-replace-with-a-random-password}
+      # Cache
+      RALPH_REDIS_HOST: ralph-redis
+      RALPH_REDIS_PORT: 6379
+    volumes:
+      - './volumes/data/ralph:/usr/local/src/ralph/instance:z'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=traefik'
+      - 'traefik.http.routers.ralph-app.entrypoints=http'
+      - 'traefik.http.routers.ralph-app.rule=Host(${BASE_HOST_NAME:-$HOSTNAME})'
+      - 'traefik.http.routers.ralph-app.middlewares=ralph-app-https-redirect'
+      - 'traefik.http.middlewares.ralph-app-https-redirect.redirectscheme.scheme=https'
+      - 'traefik.http.routers.ralph-app-secure.entrypoints=https'
+      - 'traefik.http.routers.ralph-app-secure.rule=Host(${BASE_HOST_NAME:-$HOSTNAME})'
+      - 'traefik.http.routers.ralph-app-secure.tls.certresolver=cloudflare'
+      - 'traefik.http.routers.ralph-app-secure.service=ralph-app'
+      - 'traefik.http.services.ralph-app.loadbalancer.server.port=8000'
+    networks:
+      - ralph
+      - traefik
+
+  db:
+    image: mysql:8.0
+    container_name: ralph-db
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: ralph-db
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: ralph-db
+      MYSQL_DATABASE: ${DB_CREATE_DATABASE_NAME:-ralph}
+      MYSQL_USER: ${DB_USER_NAME:-ralph}
+      MYSQL_PASSWORD: ${DB_USER_PASS:-replace-with-a-random-password}
+      MYSQL_ROOT_PASSWORD: ${DB_ADMIN_PASS:-replace-with-a-random-password}
+    volumes:
+      - './volumes/db/mysql/ralph:/var/lib/mysql:z'
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ralph
+
+  redis:
+    image: redis:alpine
+    container_name: ralph-redis
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: ralph-redis
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      CONTAINER_NAME: ralph-redis
+    volumes:
+      - './volumes/db/redis/ralph:/var/lib/redis/data:z'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ralph
+
+networks:
+  ralph:
+    name: ralph
+    external: false
+  traefik:
+    name: traefik
+    external: true
